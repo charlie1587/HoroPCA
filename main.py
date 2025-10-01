@@ -2,6 +2,9 @@
 
 import argparse
 import logging
+import os
+
+import matplotlib.pyplot as plt
 
 import networkx as nx
 import numpy as np
@@ -28,6 +31,12 @@ parser.add_argument(
 )
 parser.add_argument(
     "--n-components", default=2, type=int, help="number of principal components"
+)
+parser.add_argument(
+    "--save-plot", action="store_true", help="save 2D projection plot and coordinates"
+)
+parser.add_argument(
+    "--outdir", type=str, default="results", help="directory to save plots/coords"
 )
 
 parser.add_argument(
@@ -103,6 +112,8 @@ if __name__ == "__main__":
     logging.info(f"Running {args.model} for dimensionality reduction")
     metrics = []
     dist_orig = poincare.pairwise_distance(x)
+    # holder for last-run 2D embedding (Poincaré ball)
+    proj_2d = None
     if args.model in pca_models.keys():
         model_params = pca_models[args.model]
         for _ in range(model_params["n_runs"]):
@@ -111,7 +122,9 @@ if __name__ == "__main__":
                 model.cuda()
             model.fit(x, iterative=model_params['iterative'], optim=model_params['optim'])
             metrics.append(model.compute_metrics(x))
-            embeddings = model.map_to_ball(x).detach().cpu().numpy()
+            # map_to_ball returns the low-dim Poincaré coords; keep last run for plotting
+            embeddings = model.map_to_ball(x)
+            proj_2d = embeddings.detach().cpu().numpy()
         metrics = aggregate_metrics(metrics)
     else:
         # run hMDS baseline
@@ -121,10 +134,42 @@ if __name__ == "__main__":
         D_p = poincare.pairwise_distance(x)
         x_h = hyperboloid.mds(D_p, d=args.n_components)
         x_proj = hyperboloid.to_poincare(x_h)
-        embeddings["hMDS"] = x_proj.numpy()
+        proj_2d = x_proj.detach().cpu().numpy()
         metrics = compute_metrics(x, x_proj)
     logging.info(f"Experiments for {args.dataset} dataset completed.")
     logging.info("Computing evaluation metrics")
     results = format_metrics(metrics, args.metrics)
     for line in results:
         logging.info(line)
+
+    # --------------------------
+    # Save coordinates & a plot
+    # --------------------------
+    if args.save_plot:
+        if args.n_components != 2:
+            logging.warning("save-plot requested but n-components != 2; skipping plot.")
+        else:
+            os.makedirs(args.outdir, exist_ok=True)
+            base = f"{args.dataset}_{args.model}_dim{args.dim}_nc{args.n_components}"
+
+            # Save coords as .npy and .csv
+            npy_path = os.path.join(args.outdir, base + "_coords.npy")
+            csv_path = os.path.join(args.outdir, base + "_coords.csv")
+            np.save(npy_path, proj_2d)
+            np.savetxt(csv_path, proj_2d, delimiter=",")
+            logging.info(f"Saved coordinates to: {npy_path} and {csv_path}")
+
+            # Simple scatter on Poincaré ball
+            fig_path = os.path.join(args.outdir, base + ".png")
+            plt.figure()
+            plt.scatter(proj_2d[:, 0], proj_2d[:, 1], s=20)
+            # draw unit circle for reference (Poincaré ball)
+            circle = plt.Circle((0, 0), 1.0, fill=False, linestyle="--", linewidth=1)
+            ax = plt.gca()
+            ax.add_artist(circle)
+            ax.set_aspect("equal", adjustable="box")
+            plt.title(f"{args.model} on {args.dataset}")
+            plt.tight_layout()
+            plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            logging.info(f"Saved plot to: {fig_path}")
