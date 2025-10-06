@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser(
     description="Hyperbolic dimensionality reduction"
 )
 parser.add_argument('--dataset', type=str, help='which datasets to use', default="smalltree",
-                    choices=["smalltree", "phylo-tree", "bio-diseasome", "ca-CSphd"])
+                    choices=["smalltree", "phylo-tree", "bio-diseasome", "ca-CSphd", "bioscan_taxonomy"])
 parser.add_argument('--model', type=str, help='which dimensionality reduction method to use', default="horopca",
                     choices=["pca", "tpca", "pga", "bsa", "hmds", "horopca"])
 parser.add_argument('--metrics', nargs='+', help='which metrics to use', default=["distortion", "frechet_var"])
@@ -89,7 +89,11 @@ if __name__ == "__main__":
     else:
         # load pre-trained embeddings
         logging.info("Using optimization-based embeddings")
-        assert args.dim in [2, 10, 50], "pretrained embeddings are only for 2, 10 and 50 dimensions"
+        # Remove dimension restriction for custom datasets
+        if args.dataset not in ["smalltree", "phylo-tree", "bio-diseasome", "ca-CSphd"]:
+            logging.info(f"Loading custom dataset {args.dataset} with {args.dim} dimensions")
+        else:
+            assert args.dim in [2, 10, 50], "pretrained embeddings are only for 2, 10 and 50 dimensions"
         z = load_embeddings(args.dataset, dim=args.dim)
         z = torch.from_numpy(z)
         z_dist = poincare.pairwise_distance(z)
