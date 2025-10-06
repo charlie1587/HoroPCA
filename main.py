@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 import torch
+from scipy.stats import gaussian_kde
 
 import geom.hyperboloid as hyperboloid
 import geom.poincare as poincare
@@ -159,16 +160,69 @@ if __name__ == "__main__":
             np.savetxt(csv_path, proj_2d, delimiter=",")
             logging.info(f"Saved coordinates to: {npy_path} and {csv_path}")
 
-            # Simple scatter on Poincaré ball
+            # Enhanced scatter plot with density and better labels
             fig_path = os.path.join(args.outdir, base + ".png")
-            plt.figure()
-            plt.scatter(proj_2d[:, 0], proj_2d[:, 1], s=20)
+            plt.figure(figsize=(10, 10))
+            
+            # Create density plot in background
+            from scipy.stats import gaussian_kde
+            if len(proj_2d) > 1:
+                # Create density estimation
+                kde = gaussian_kde(proj_2d.T)
+                
+                # Create grid for density plot
+                xx, yy = np.meshgrid(np.linspace(-1.1, 1.1, 100), 
+                                   np.linspace(-1.1, 1.1, 100))
+                grid_coords = np.vstack([xx.ravel(), yy.ravel()])
+                density = kde(grid_coords).reshape(xx.shape)
+                
+                # Plot density as background
+                plt.contourf(xx, yy, density, levels=20, alpha=0.3, cmap='Blues')
+            
+            # Plot points
+            plt.scatter(proj_2d[:, 0], proj_2d[:, 1], s=30, alpha=0.8, 
+                       c='darkblue', edgecolors='white', linewidth=0.5)
+            
+            # Add labels to each point (using node indices for now)
+            # For better visualization, only label points not too close to others
+            labeled_points = set()
+            min_distance = 0.1  # Minimum distance between labels
+            
+            for i in range(len(proj_2d)):
+                # Check if this point is too close to already labeled points
+                too_close = False
+                for j in labeled_points:
+                    dist = np.sqrt((proj_2d[i, 0] - proj_2d[j, 0])**2 + 
+                                 (proj_2d[i, 1] - proj_2d[j, 1])**2)
+                    if dist < min_distance:
+                        too_close = True
+                        break
+                
+                if not too_close:
+                    # Add label with node index (you can replace this with actual names)
+                    label_text = f"node_{i}"  # Replace with actual node names if available
+                    plt.annotate(label_text, (proj_2d[i, 0], proj_2d[i, 1]), 
+                               xytext=(5, 5), textcoords='offset points', 
+                               fontsize=9, alpha=0.9, 
+                               bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
+                    labeled_points.add(i)
+            
             # draw unit circle for reference (Poincaré ball)
-            circle = plt.Circle((0, 0), 1.0, fill=False, linestyle="--", linewidth=1)
+            circle = plt.Circle((0, 0), 1.0, fill=False, linestyle="--", 
+                              linewidth=2, color='black', alpha=0.8)
             ax = plt.gca()
             ax.add_artist(circle)
+            
+            # Set axis limits to show complete circle with some padding
+            ax.set_xlim(-1.2, 1.2)
+            ax.set_ylim(-1.2, 1.2)
             ax.set_aspect("equal", adjustable="box")
-            plt.title(f"{args.model} on {args.dataset}")
+            
+            # Add labels and title
+            plt.xlabel("Poincaré Coordinate 1", fontsize=12)
+            plt.ylabel("Poincaré Coordinate 2", fontsize=12)
+            plt.title(f"{args.model} on {args.dataset}", fontsize=14)
+            plt.grid(True, alpha=0.3)
             plt.tight_layout()
             plt.savefig(fig_path, dpi=300, bbox_inches="tight")
             plt.close()
