@@ -39,6 +39,9 @@ parser.add_argument(
 parser.add_argument(
     "--outdir", type=str, default="results", help="directory to save plots/coords"
 )
+parser.add_argument(
+    "--batch-size", type=int, default=1000, help="batch size for distance computation"
+)
 
 parser.add_argument(
     "--lr", default=5e-2, type=float, help="learning rate to use for optimization-based methods"
@@ -116,7 +119,11 @@ if __name__ == "__main__":
     # Run dimensionality reduction methods
     logging.info(f"Running {args.model} for dimensionality reduction")
     metrics = []
-    dist_orig = poincare.pairwise_distance(x)
+    
+    # Use pairwise distance with batching (now built into the function)
+    logging.info(f"Computing pairwise distances (batch_size={args.batch_size})")
+    dist_orig = poincare.pairwise_distance(x, batch_size=args.batch_size)
+    
     # holder for last-run 2D embedding (Poincaré ball)
     proj_2d = None
     if args.model in pca_models.keys():
@@ -167,7 +174,7 @@ if __name__ == "__main__":
             # Enhanced scatter plot with density and better labels
             fig_path = os.path.join(args.outdir, base + ".png")
             plt.figure(figsize=(10, 10))
-            
+
             # Create density plot in background
             from scipy.stats import gaussian_kde
             if len(proj_2d) > 1:

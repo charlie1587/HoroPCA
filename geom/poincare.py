@@ -81,9 +81,44 @@ def distance(x, y, keepdim=True):
     return dist
 
 
-def pairwise_distance(x, keepdim=False):
-    """All pairs of hyperbolic distances (NxN matrix)."""
-    return distance(x.unsqueeze(-2), x.unsqueeze(-3), keepdim=keepdim)
+def pairwise_distance(x, keepdim=False, batch_size=1000):
+    """All pairs of hyperbolic distances (NxN matrix) with batching for memory efficiency."""
+    n = x.shape[0]
+    
+    # For small datasets, use regular computation
+    if n <= batch_size:
+        return distance(x.unsqueeze(-2), x.unsqueeze(-3), keepdim=keepdim)
+    
+    device = x.device
+    dtype = x.dtype
+    
+    # Pre-allocate result matrix
+    if keepdim:
+        dist_matrix = torch.zeros(n, n, 1, dtype=dtype, device=device)
+    else:
+        dist_matrix = torch.zeros(n, n, dtype=dtype, device=device)
+    
+    # Compute in batches
+    for i in range(0, n, batch_size):
+        end_i = min(i + batch_size, n)
+        
+        for j in range(0, n, batch_size):
+            end_j = min(j + batch_size, n)
+            
+            # Compute distance for this batch
+            x_i = x[i:end_i]
+            x_j = x[j:end_j]
+            
+            # Use broadcasting to compute distances
+            dist_batch = distance(x_i.unsqueeze(-2), x_j.unsqueeze(-3), keepdim=keepdim)
+            dist_matrix[i:end_i, j:end_j] = dist_batch
+            
+            # Clear intermediate results
+            del x_i, x_j, dist_batch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    return dist_matrix
 
 
 def distance0(x, keepdim=True):
